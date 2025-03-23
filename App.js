@@ -1,4 +1,4 @@
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, View, Alert } from 'react-native';
 import { Audio } from 'expo-av';
 import * as MediaLibrary from 'expo-media-library';
 import { useState, useEffect } from 'react';
@@ -14,28 +14,74 @@ export default function App() {
   const [songs, setSongs] = useState([]);
   const [playlists, setPlaylists] = useState({});
   const [currentPlaylist, setCurrentPlaylist] = useState(null);
-  const [currentIndex, setCurrentIndex] = useState(-1);
+  const [currentIndex, setCurrentIndex] = useState(-1); // Will set to 0 after songs load
   const [screen, setScreen] = useState('Home');
-  const [soundCache, setSoundCache] = useState({}); // New state for caching sounds
+  const [soundCache, setSoundCache] = useState({});
+  const [position, setPosition] = useState(0);
+  const [duration, setDuration] = useState(0);
 
+  // Set up audio mode, load songs, and select first song
   useEffect(() => {
     (async () => {
-      const { status } = await MediaLibrary.requestPermissionsAsync();
-      if (status === 'granted') {
-        const media = await MediaLibrary.getAssetsAsync({ mediaType: 'audio', first: 1000 });
-        setSongs(media.assets);
+      try {
+        await Audio.setAudioModeAsync({
+          staysActiveInBackground: true,
+          playsInSilentMode: true,
+          interruptionModeAndroid: 1,
+          shouldDuckAndroid: false,
+          playThroughEarpieceAndroid: false,
+        });
+
+        const { status } = await MediaLibrary.requestPermissionsAsync();
+        if (status === 'granted') {
+          const media = await MediaLibrary.getAssetsAsync({ mediaType: 'audio', first: 1000 });
+          console.log('Media assets loaded:', media.assets);
+          if (media.assets.length > 0) {
+            setSongs(media.assets);
+            setCurrentIndex(0); // Select first song by default
+          } else {
+            Alert.alert('No Songs Found', 'No audio files were found on your device.');
+          }
+        } else {
+          Alert.alert('Permission Denied', 'Please grant media permissions to load songs.');
+        }
+      } catch (error) {
+        console.error('Error setting up audio or loading songs:', error);
+        Alert.alert('Error', 'Failed to initialize app: ' + error.message);
       }
     })();
   }, []);
 
-  // Function to clean up expired cache entries
+  // Monitor playback and auto-play next song when finished
+  useEffect(() => {
+    if (!sound) return;
+
+    const handlePlaybackStatusUpdate = (status) => {
+      if (status.isLoaded) {
+        setPosition(status.positionMillis || 0);
+        setDuration(status.durationMillis || 0);
+        setIsPlaying(status.isPlaying);
+        if (status.didJustFinish) {
+          console.log('Song finished, playing next...');
+          playNext(); // Auto-play next song
+        }
+      }
+    };
+
+    sound.setOnPlaybackStatusUpdate(handlePlaybackStatusUpdate);
+
+    return () => {
+      sound.setOnPlaybackStatusUpdate(null); // Cleanup listener
+    };
+  }, [sound, playNext]);
+
   const cleanCache = () => {
     const now = Date.now();
     setSoundCache((prevCache) => {
       const newCache = { ...prevCache };
       for (const uri in newCache) {
-        if (now - newCache[uri].timestamp > 24 * 60 * 60 * 1000) { // 1 day in milliseconds
-          newCache[uri].sound.unloadAsync(); // Unload expired sound
+        if (now - newCache[uri].timestamp > 24 * 60 * 60 * 1000) {
+          newCache[uri].sound.unloadAsync().catch((err) => console.error('Cache unload error:', err));
           delete newCache[uri];
         }
       }
@@ -45,53 +91,73 @@ export default function App() {
 
   async function playSong(index, playlistName = null) {
     const songList = playlistName ? playlists[playlistName] : songs;
+    if (!songList || index >= songList.length || index < 0) {
+      Alert.alert('Error', 'Invalid song index or empty playlist.');
+      return;
+    }
+
     const song = songList[index];
     const songUri = song.uri;
 
-    // Clean cache before playing to ensure we don't keep expired sounds
     cleanCache();
 
-    // Check if song is in cache
-    if (soundCache[songUri] && soundCache[songUri].sound) {
-      if (sound && currentIndex === index && currentPlaylist === playlistName) {
-        await sound.playAsync();
+    try {
+      if (soundCache[songUri] && soundCache[songUri].sound) {
+        if (sound && currentIndex === index && currentPlaylist === playlistName) {
+          await sound.playAsync();
+          setIsPlaying(true);
+          return;
+        }
+        if (sound) await sound.unloadAsync();
+        const cachedSound = soundCache[songUri].sound;
+        setSound(cachedSound);
+        setCurrentIndex(index);
+        setCurrentPlaylist(playlistName);
         setIsPlaying(true);
-        return;
+        await cachedSound.setStatusAsync({ shouldPlay: true });
+      } else {
+        if (sound) await sound.unloadAsync();
+        const { sound: newSound } = await Audio.Sound.createAsync(
+          { uri: songUri },
+          { shouldPlay: true }
+        );
+        setSound(newSound);
+        setCurrentIndex(index);
+        setCurrentPlaylist(playlistName);
+        setIsPlaying(true);
+        setSoundCache((prevCache) => ({
+          ...prevCache,
+          [songUri]: { sound: newSound, timestamp: Date.now() },
+        }));
       }
-      if (sound) await sound.unloadAsync();
-      const cachedSound = soundCache[songUri].sound;
-      setSound(cachedSound);
-      setCurrentIndex(index);
-      setCurrentPlaylist(playlistName);
-      setIsPlaying(true);
-      await cachedSound.playAsync();
-    } else {
-      if (sound) await sound.unloadAsync();
-      const { sound: newSound } = await Audio.Sound.createAsync({ uri: songUri });
-      setSound(newSound);
-      setCurrentIndex(index);
-      setCurrentPlaylist(playlistName);
-      setIsPlaying(true);
-      // Add to cache with timestamp
-      setSoundCache((prevCache) => ({
-        ...prevCache,
-        [songUri]: { sound: newSound, timestamp: Date.now() },
-      }));
-      await newSound.playAsync();
+    } catch (error) {
+      console.error('Error playing song:', error);
+      Alert.alert('Playback Error', 'Failed to play song: ' + error.message);
     }
   }
 
   async function pauseSong() {
     if (sound) {
-      await sound.pauseAsync();
-      setIsPlaying(false);
+      try {
+        await sound.pauseAsync();
+        setIsPlaying(false);
+      } catch (error) {
+        console.error('Error pausing song:', error);
+      }
     }
   }
 
   async function playNext() {
     const songList = currentPlaylist ? playlists[currentPlaylist] : songs;
     const nextIndex = currentIndex + 1;
-    if (nextIndex < songList.length) await playSong(nextIndex, currentPlaylist);
+    if (nextIndex < songList.length) {
+      console.log('Moving to next song, index:', nextIndex);
+      await playSong(nextIndex, currentPlaylist);
+    } else {
+      console.log('End of list reached, resetting to first song');
+      setIsPlaying(false);
+      setCurrentIndex(0); // Reset to first song
+    }
   }
 
   async function playPrevious() {
@@ -102,22 +168,30 @@ export default function App() {
 
   async function fastForward() {
     if (sound) {
-      const status = await sound.getStatusAsync();
-      const newPosition = Math.min(status.positionMillis + 10000, status.durationMillis);
-      await sound.setPositionAsync(newPosition);
+      try {
+        const status = await sound.getStatusAsync();
+        const newPosition = Math.min(status.positionMillis + 10000, status.durationMillis);
+        await sound.setPositionAsync(newPosition);
+      } catch (error) {
+        console.error('Error fast forwarding:', error);
+      }
     }
   }
 
   async function rewind() {
     if (sound) {
-      const status = await sound.getStatusAsync();
-      const newPosition = Math.max(status.positionMillis - 10000, 0);
-      await sound.setPositionAsync(newPosition);
+      try {
+        const status = await sound.getStatusAsync();
+        const newPosition = Math.max(status.positionMillis - 10000, 0);
+        await sound.setPositionAsync(newPosition);
+      } catch (error) {
+        console.error('Error rewinding:', error);
+      }
     }
   }
 
   useEffect(() => {
-    return sound ? () => sound.unloadAsync() : undefined;
+    return sound ? () => sound.unloadAsync().catch((err) => console.error('Unload error:', err)) : undefined;
   }, [sound]);
 
   const renderScreen = () => {
@@ -144,12 +218,12 @@ export default function App() {
         return (
           <AllSongsScreen
             songs={songs}
-            setSongs={setSongs} // Pass setSongs to update songs state
+            setSongs={setSongs}
             playSong={playSong}
             playlists={playlists}
             setPlaylists={setPlaylists}
-            currentIndex={currentIndex} // Pass currentIndex
-            currentPlaylist={currentPlaylist} // Pass currentPlaylist
+            currentIndex={currentIndex}
+            currentPlaylist={currentPlaylist}
           />
         );
       case 'Playlist':

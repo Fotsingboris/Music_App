@@ -17,13 +17,24 @@
       "package": "com.boristech.musicplayer",
       "permissions": [
         "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE"
+        "WRITE_EXTERNAL_STORAGE",
+        "FOREGROUND_SERVICE",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
       ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#000000"
       }
     },
+    "plugins": [
+      [
+        "expo-av",
+        {
+          "backgroundExecution": true
+        }
+      ]
+    ],
     "extra": {
       "eas": {
         "projectId": "ca772dae-13e4-4a66-8118-018226781950"
