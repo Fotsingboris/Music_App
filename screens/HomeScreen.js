@@ -113,7 +113,7 @@ export default function HomeScreen({ sound, isPlaying, currentSong, playSong, pa
           playPrevious={playPrevious}
           fastForward={fastForward}
           rewind={rewind}
-          iconColor="#fff" // Pass white color for icons
+          iconColor="#fff" 
         />
       </View>
     </View>
