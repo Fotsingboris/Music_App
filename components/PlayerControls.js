@@ -37,6 +37,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    width: '80%', // Adjust width as needed
+    width: '80%', 
   },
 });
