@@ -68,7 +68,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     flex: 1,
     marginRight: 10,
-    color: '#000', // Default text color
+    color: '#000', //
   },
   playing: {
     backgroundColor: '#007AFF', // Blue background for playing song
