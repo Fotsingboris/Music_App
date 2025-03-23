@@ -1,28 +1,33 @@
 {
   "expo": {
-    "name": "MusicApp",
-    "slug": "MusicApp",
+    "name": "BorisTech Player",
+    "slug": "boristech-player",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
-    "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#000000"
     },
-    "ios": {
-      "supportsTablet": true
-    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "android": {
+      "package": "com.boristech.musicplayer",
+      "permissions": [
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#000000"
       }
     },
-    "web": {
-      "favicon": "./assets/favicon.png"
+    "extra": {
+      "eas": {
+        "projectId": "ca772dae-13e4-4a66-8118-018226781950"
+      }
     }
   }
 }
